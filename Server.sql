@@ -1,5 +1,5 @@
 create table UserInfo(
-    id integer primary key,
+    id serial primary key,
     username text,
     password text,
     createdTime timestamp,   --日期和时间(无时区)
@@ -22,7 +22,7 @@ create table Friend(
 );
 
 create table ChatGroup(
-    id integer primary key ,
+    id serial primary key ,
     name text
 );
 
@@ -36,9 +36,8 @@ create table User_in_Group(
 create type MsgType as enum ('text', 'file', 'image');
 
 create table Message(
-    id integer primary key,
+    id serial primary key,
     sender integer references UserInfo(id),
-    nicknameOfSender text references UserInfo(nickname),
     receiver integer references UserInfo(id),
     type MsgType,
     createdTime timestamp,
