@@ -41,25 +41,7 @@ create table Message(
     nicknameOfSender text references UserInfo(nickname),
     receiver integer references UserInfo(id),
     type MsgType,
-    createTime timestamp,
+    createdTime timestamp,
     editedTime timestamp,
     isToGroup boolean
-);
-
-create table Message_text(
-    tid integer primary key references Message(id),
-    mid integer,
-    content text
-);
-
-create table Message_file(
-    tid integer primary key references Message(id),
-    mid integer,
-    content text
-);
-
-create table Message_image(
-    tid integer primary key references Message(id),
-    mid integer,
-    content text
 );
