@@ -26,6 +26,7 @@ struct UserInfo{
 };
 
 /// 好友和群聊好友都用这个？
+/// A：群聊中的用Userinfo
 struct Friend{
     int uid;
     std::string group; ///< 哪个用户组，是好友与好友关系

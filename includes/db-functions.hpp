@@ -230,7 +230,7 @@ Response<Friend> get_friend(int uid, int friend_id){
             tmp.createdTime = R[0][2].c_str();
             tmp.lastLoginTime = R[0][3].c_str();
             tmp.birthday = R[0][4].c_str();
-            tmp.isMale = R[0][5].c_str() == "true" ? 1 : 0;
+            tmp.isMale = (R[0][5].c_str() == "true") ? 1 : 0;
             tmp.ip = R[0][6].c_str();
             tmp.nickname = R[0][7].c_str();
             Response<Friend> resp(1,SUCCESS_INFO,tmp);
@@ -312,28 +312,165 @@ bool change_friendGroup(int owner_id, int friend_id, std::string group_name)
     
 }
 
-/// \brief 获得所有自己加入的群聊
-Response<std::vector<ChatGroup> > list_chat_groups(int uid){
+/// \brief 根据名字搜索群聊
+Response<std::vector<ChatGroup>> search_group(std::string group_name)
+{
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open())
+    {
+        pqxx::work W(C);
+        std::string sql_search = "select id from chatgroup where name = '" + group_name + "';";
+        pqxx::result R_search = W.exec(sql_search);
+        if (R_search.size() == 0) {
+            Response<std::vector<ChatGroup>> resp(0,NOT_FOUND_ERROR);
+            return resp;
+        }
+        else {
+            std::vector<ChatGroup> chatgroups;
+            for (pqxx::result::const_iterator row = R_search.begin(); row != R_search.end(); ++row)
+            {
+                ChatGroup tmp;
+                tmp.name = group_name;
+                tmp.id = row[0].as<int>();
+                chatgroups.push_back(tmp);
+            }
+            Response<std::vector<ChatGroup>> resp(1, SUCCESS_INFO, chatgroups);
+            return resp;
+        }
+        
+    }
+    else{
+        Response<std::vector<ChatGroup>> resp(0,CONNECTION_ERROR);
+        return resp;
+    }
+}
+
+/// \brief 加入群聊
+bool join_chatGroup(int uid,int groupid)
+{
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open())
+    {
+        pqxx::work W(C);
+        std::string sql_search = "select name from chatgroup where id = " + std::to_string(groupid) + ";";
+        pqxx::result R_search = W.exec(sql_search);
+        if (R_search.size() == 0)
+        {
+            return 0;
+        }
+        else {
+            std::string sql_addgroup = "insert into user_in_group (userid, groupid, mute) values (" + std::to_string(uid) + ", " + std::to_string(groupid) + ", false);";
+            W.exec(sql_addgroup);
+            W.commit();
+            return 1;
+        }
+    }
+    else{
+        return 0;
+    }
+}
+
+/// \brief 获得某人加入的所有群聊
+Response<std::vector<ChatGroup>> list_chat_groups(int uid){
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open())
+    {
+        pqxx::work W(C);
+        std::string sql_listGroup = "select id, name from chatgroup where id in (select groupid from user_in_group where userid = " + std::to_string(uid) + ");";
+        pqxx::result R_listGroup = W.exec(sql_listGroup);
+        vector<ChatGroup> chatgroups;
+        for (pqxx::result::const_iterator row = R_listGroup.begin(); row != R_listGroup.end(); ++row)
+        {
+            ChatGroup tmp;
+            tmp.id = row[0].as<int>();
+            tmp.name = row[1].c_str();
+            chatgroups.push_back(tmp);
+        }
+        Response<std::vector<ChatGroup>> resp(1, SUCCESS_INFO, chatgroups);
+        return resp;
+    }
+    else
+    {
+        Response<std::vector<ChatGroup>> resp(0,CONNECTION_ERROR);
+        return resp;
+    }
     
 }
 
 /// \brief 创建群聊
 /// \return Response<ChatGroup> 创建后的群聊信息，主要是包含id
 Response<ChatGroup> create_chat_group(int uid, std::string nickname){
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open())
+    {
+        pqxx::work W(C);
 
+        std::string sql_MaxGroupId = "select max(id) from chatgroup;";
+        pqxx::result R_MaxGroupId = W.exec(sql_MaxGroupId);
+        int GroupId = R_MaxGroupId[0][0].as<int>() + 1;
+
+        std::string sql = "insert into chatgroup (id, name) values (" + std::to_string(GroupId) + ", '" + nickname + "');";
+        W.exec(sql);
+        W.commit();
+
+        join_chatGroup(uid, GroupId);
+    }
+    else {
+        Response<ChatGroup> resp(0,CONNECTION_ERROR);
+        return resp;
+    }
+    
 }
 
-/// \brief 获得某个群组的所有用户信息
-Response<std::vector<Friend> > get_group_mumber(int uid, int group_id){
+/// \brief 获得某个群聊的所有用户信息
+Response<std::vector<UserInfo>> get_group_mumber(int group_id){
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open())
+    {
+        pqxx::work W_listUsers(C);
+        std::string sql_listUsers = "select userid from user_in_group where groupid = " + std::to_string(group_id) + ";";
+        pqxx::result R_listUsers = W_listUsers.exec(sql_listUsers);
 
+        vector<UserInfo> users_in_chatGroup;
+        for (pqxx::result::const_iterator row = R_listUsers.begin(); row != R_listUsers.end(); ++row)
+        {
+            Response<UserInfo> tmp(1,"temp");
+            tmp = get_info(row[0].as<int>());
+            UserInfo a_piece_info = tmp.data;
+            users_in_chatGroup.push_back(a_piece_info);
+        }
+        Response<std::vector<UserInfo>> resp(1,SUCCESS_INFO, users_in_chatGroup);
+        return resp;
+    }
+    else
+    {
+        Response<std::vector<UserInfo>> resp(0,CONNECTION_ERROR);
+        return resp;
+    }
+    
 }
 
 
-/// \brief 离开一个群组
+/// \brief 离开一个群聊
 ///
 /// 如果是群主，直接解散群？
+/// A：目前暂不设置群成员中特殊身份
+/// TODO：所有人都退群的时候怎么办
 bool leave_group(int uid, int group_id){
-
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open())
+    {
+        pqxx::work W_leave(C);
+        std::string sql_leave = "delete from user_in_group where userid = " + std::to_string(uid) + " and groupid = " + std::to_string(group_id) + ";";
+        W_leave.exec(sql_leave);
+        W_leave.commit();
+        return 1;
+    }
+    else
+    {
+        return 0;
+    }
+    
 }
 
 /// \brief 获得上次离线以后所有关于自己的聊天记录
