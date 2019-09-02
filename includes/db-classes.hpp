@@ -30,6 +30,7 @@ struct UserInfo{
 struct Friend{
     int uid;
     std::string group; ///< 哪个用户组，是好友与好友关系
+    ///已解决
     std::string username;
     std::string createdTime;
     std::string lastLoginTime;
@@ -38,6 +39,7 @@ struct Friend{
     bool isMale;
     std::string ip;
     std::string nickname;
+    bool isMute;
 };
 
 struct ChatGroup{
@@ -45,12 +47,21 @@ struct ChatGroup{
     std::string name;
 };
 
+enum MsgType {
+    MSGTYPE_TEXT,
+    MSGTYPE_FILE,
+    MSGTYPE_IMAGE
+};
+
 class Message{
+
+public:
     int id;
     int sender;
-    int reciver;
-    std::string type;
+    int receiver;
+    MsgType type;
     std::string createdTime;
     std::string editedTime;
     bool isToGroup;
+    std::string content;
 };

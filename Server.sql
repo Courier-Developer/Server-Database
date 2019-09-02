@@ -4,6 +4,7 @@ create table UserInfo(
     password text,
     createdTime timestamp,   --日期和时间(无时区)
     lastLoginTime timestamp, -- 上次登录时间，用于同步数据
+    alive boolean,
     ip cidr,                --ip地址
     avatar bit varying,     --不限长比特流
     birthday timestamp,
@@ -42,5 +43,6 @@ create table Message(
     type MsgType,
     createdTime timestamp,
     editedTime timestamp,
-    isToGroup boolean
+    isToGroup boolean,
+    content text
 );
