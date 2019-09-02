@@ -21,6 +21,8 @@ struct UserInfo{
     std::string birthday;
     bool isMale;
     std::string nickname;
+    std::string password;
+    std::string signature;
 };
 
 /// 好友和群聊好友都用这个？
@@ -32,7 +34,6 @@ struct Friend{
     std::string lastLoginTime;
     // TODO avatar
     std::string birthday;
-    bool alive;
     bool isMale;
     std::string ip;
     std::string nickname;

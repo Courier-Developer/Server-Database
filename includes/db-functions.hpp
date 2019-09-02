@@ -3,10 +3,45 @@
 #include <string>
 #include <vector>
 #include "db-classes.hpp"
+#include "pqxx/pqxx"
+#include <stdlib.h>
+
+
+#define DBLOGINFO "dbname=postgres user=postgres password=yangfuhao hostaddr=127.0.0.1 port=5432"
+#define CONNECTION_ERROR "connection erroe"
+#define NOT_FOUND_ERROR "not found"
+#define SUCCESS_INFO "success"
 
 // https://github.com/Courier-Developer/feverrpc/blob/master/lock.cpp
 // 关注ThreadManager的可以调用的方法，比如查询是否在线
-extern ThreadManager threadManager;
+// extern ThreadManager threadManager;
+
+void output(pqxx::result &R)
+{
+    for (pqxx::const_result_iterator i = R.begin(); i != R.end(); ++i)
+    {
+        for (int j = 0; j < i.size(); j++)
+        {
+            std::cout << i[j].name() << ":  " << i[j].c_str() << std::endl;
+        }
+    }
+}
+
+/// \brief设置时区为PRC
+int set_timezone()
+{
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()) {
+        pqxx::work W(C);
+        std::string sql = "set timezone='PRC';";
+        pqxx::result R = W.exec(sql);
+        W.commit();
+        return 1;
+    }
+    else {
+        return 0;
+    }
+}
 
 
 /// \brief 登录
@@ -15,33 +50,112 @@ extern ThreadManager threadManager;
 /// \return 用户id 如果登录失败则返回负数 
 int login(std::string username,std::string password){
     // TODO
-    return 1;   
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()){
+        pqxx::work W(C);
+        std::string sql = "select id,username,password from userinfo where username='" + username + "';";
+        pqxx::result R = W.exec(sql);
+
+        if (strcmp(R[0][2].c_str(), password.c_str()) == 0) return 1;
+        else return 0;
+    }
+    else {
+        return -1;
+    }
+}
+
+/// \brief 判断用户名重复
+/// 判断用户名是否已被注册
+/// \param username
+/// \return 1重复 0未重复
+int is_username_exists(std::string username)
+{
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()){
+        pqxx::work W(C);
+        std::string sql = "select id from userinfo where username='" + username + "';";
+        pqxx::result R = W.exec(sql);
+        if(R.size() != 0)
+        {
+            return 1;
+        }
+        else return 0;
+    }
+    else {
+        return -1;
+    }
 }
 
 /// \brief 注册
 /// \param username
 /// \param password
 /// \param nickname
-/// \return 用户id 如果失败则返回负数  
-int register_account(std::string username, std::string password, std::string nickname){
-
-    return 1;
+/// \param ismale
+/// \return 用户id 如果失败则返回-1  用户名已存在返回-2
+int register_account(std::string username, std::string password, std::string nickname, bool ismale){
+    if (is_username_exists(username) == 1)
+    {
+        return -2;
+    }
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()){
+        pqxx::work W(C);
+        std::string sql = "insert into postgres.public.userinfo (username, password, nickname) values ('" + username + "', '" + password + "', '" + nickname + "');";
+        pqxx::result R_insert = W.exec(sql);
+        W.commit();
+        sql = "select id from userinfo where username='" + username + "';";
+        pqxx::work W_select(C);
+        pqxx::result R_select = W_select.exec(sql);
+        std::string id_str = R_select[0][0].c_str();
+        int i =std::stoi(id_str);
+        return i;
+    }
+    else {
+        return -1;
+    }
 }
 
 /// \brief 下线
 ///
-/// 主要是将alive字段和lastLoginTime字段进行更新
+/// 主要是将lastLoginTime字段进行更新
 /// \param uid
 /// \return if it is ok.
 bool logout(int uid){
-    
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()){
+        pqxx::work W(C);
+        std::string sql = "update userinfo set lastlogintime = now() where id = " + std::to_string(uid) + ";";
+        pqxx::result R = W.exec(sql);
+        W.commit();
+        return 1;
+    }
+    else return 0;
 }
 
 /// \brief 获得用户信息
 /// \param uid id of UserInfo
 /// \return Response<UserInfo> 
 Response<UserInfo> get_info(int uid){
-    
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()){
+        pqxx::work W(C);
+        std::string sql = "select id,username,createdtime,lastlogintime,birthday,ismale,nickname from userinfo where id=" + std::to_string(uid) + ";";
+        pqxx::result R = W.exec(sql);
+        UserInfo info;
+        info.id = atoi(R[0][0].c_str());
+        info.username = R[0][1].c_str();
+        info.createdTime = R[0][2].c_str();
+        info.lastLoginTime = R[0][3].c_str();
+        info.birthday = R[0][4].c_str();
+        info.isMale = strcmp(R[0][5].c_str(), "true") ? 1 : 0;
+        info.nickname = R[0][6].c_str();
+        Response<UserInfo> resp(1, "UserInfo", info);
+        return resp;
+    }
+    else {
+        Response<UserInfo> resp(0,CONNECTION_ERROR);
+        return resp;
+    }
 }
 
 
@@ -51,18 +165,84 @@ Response<UserInfo> get_info(int uid){
 /// \param UserInfo
 /// \return 
 Response<std::string> update_info(int uid, UserInfo ui){
-
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()){
+        pqxx::work W(C);
+        std::string isMale = ui.isMale ? "true" : "false";
+        std::string sql = "update userinfo set username = '" + ui.username + "', password = '" + ui.password + "', lastlogintime = '" + ui.lastLoginTime + "', birthday = '" + ui.birthday + "', signature = '" + ui.signature + "', ismale = " + isMale + ", nickname = '" + ui.nickname + "' where id = '" + std::to_string(uid) + "';";
+        pqxx::result R = W.exec(sql);
+        // return resp;
+    }
+    else {
+        Response<std::string> resp(0,CONNECTION_ERROR);
+        return resp;
+    }
 }
 
 /// \brief 获得用户所有好友信息
-/// \param uid id of UserInfo
-Response<std::vector<Friend>> list_friends(int uid){
+/// \param uid id of 
+Response<std::vector<Friend> > list_friends(int uid){
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()){
+        pqxx::work W(C);
+        std::string sql = "select * from userinfo where id in ( select friend.friend from friend where owner = " + std::to_string(uid) + ");";
+        pqxx::result R = W.exec(sql);
+        
+        std::vector<Friend> all_friend;
+        for (pqxx::const_result_iterator i = R.begin(); i != R.end(); ++i)
+        {
+            Friend tmp;
 
+        }
+        Response<std::vector<Friend>> resp(1,"successful",all_friend);
+        return resp;
+    }
+    else {
+        Response<std::vector<Friend>> resp(0,CONNECTION_ERROR);
+        return resp;
+    }
+    
 }
 
 /// \brief 获得某个好友信息
 Response<Friend> get_friend(int uid, int friend_id){
-    
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open())
+    {
+        pqxx::work W(C);
+        std::string sql = "select friend, groupname from friend where owner = " + std::to_string(uid) + " and friend.friend = " + std::to_string(friend_id) + ";";
+        pqxx::result R = W.exec(sql);
+        if(R.size() == 0) {
+            Response<Friend> resp(0,NOT_FOUND_ERROR);
+            W.commit();
+            return resp;
+        }
+        else {
+            Friend tmp;
+            tmp.group = R[0][1].c_str();
+            std::cout << "groupname:  " << tmp.group << std::endl;
+            // pqxx::work W_usrinfo(C);
+            std::string id_str = R[0][0].c_str();
+            std::string sql = "select id, username, createdtime, lastlogintime, birthday, ismale, ip, nickname from userinfo where id = " + id_str + ";";
+            pqxx::result R_usrinfo = W.exec(sql);
+            tmp.uid = R[0][0].as<int>();
+            tmp.username = R[0][1].c_str();
+            tmp.createdTime = R[0][2].c_str();
+            tmp.lastLoginTime = R[0][3].c_str();
+            tmp.birthday = R[0][4].c_str();
+            tmp.isMale = R[0][5].c_str() == "true" ? 1 : 0;
+            tmp.ip = R[0][6].c_str();
+            tmp.nickname = R[0][7].c_str();
+            Response<Friend> resp(1,SUCCESS_INFO,tmp);
+            W.commit();
+            return resp;
+        }
+    }
+    else {
+        Response<Friend> resp(0,CONNECTION_ERROR);
+        return resp;
+    }
+        
 }
 
 /// \brief 申请好友
@@ -70,34 +250,81 @@ Response<Friend> get_friend(int uid, int friend_id){
 /// 需要同时向ThreadManager发送请求
 /// 在数据库中存储的时候需要存储单向的
 bool request_friend(int uid, int friend_id){
-
+    pqxx::connection C(DBLOGINFO);
+    if  (C.is_open()) {
+        pqxx::work W(C);
+        std::string sql = "insert into friend (owner, friend, groupname, mute, isagreed) values (" + std::to_string(uid) + ", " + std::to_string(friend_id) + ", null, false, false);\ninsert into friend (owner, friend, groupname, mute, isagreed) values (" + std::to_string(friend_id) + ", " + std::to_string(uid) + ", null, false, false);";
+        W.exec(sql);
+        W.commit();
+        return 1;
+    }
+    else {
+        return 0;
+    }
 }
 
 /// \brief 同意好友请求
 ///
 /// 在数据库中存储需要存储双向的
 bool make_friend(int uid, int friend_id){
-
-} 
-
-/// \brief 删除好友
-bool delete_friend(int uid,int friend_id){
-
-}
-
-/// \brief 获得所有自己加入的群组
-Response<std::vector<ChatGroup>> list_chat_groups(int uid){
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()) {
+        pqxx::work W(C);
+        std::string sql = "update friend set isagreed = true where owner = " + std::to_string(uid) + " and friend.friend = " + std::to_string(friend_id) + ";\nupdate friend set isagreed = true where owner = " + std::to_string(friend_id) + " and friend.friend = " + std::to_string(uid) + ";";
+        W.exec(sql);
+        W.commit();
+        return 1;
+    }
+    else {
+        return 0;
+    }
     
 }
 
-/// \brief 创建群组
-/// \return Response<ChatGroup> 创建后的群组信息，主要是包含id
+/// \brief 删除好友 拒绝也可以用这个
+bool delete_friend(int uid,int friend_id){
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()) {
+        pqxx::work W(C);
+        std::string sql = "delete from friend where owner = " + std::to_string(uid) + " and friend.friend = " + std::to_string(friend_id) + ";\ndelete from friend where friend.friend = " + std::to_string(friend_id) + " and owner = " + std::to_string(uid) + ";";
+        W.exec(sql);
+        W.commit();
+        return 1;
+    }
+    else {
+        return 0;
+    }
+    
+}
+
+/// \brief 修改好友所在群组
+bool change_friendGroup(int owner_id, int friend_id, std::string group_name)
+{
+    pqxx::connection C(DBLOGINFO);
+    if (C.is_open()) {
+        pqxx::work W(C);
+        std::string sql = "update friend set groupname = '" + group_name + "' where owner = " + std::to_string(owner_id) + " and friend.friend = " + std::to_string(friend_id) + ";";
+        W.exec(sql);
+        W.commit();
+        return 1;
+    }
+    else return 0;
+    
+}
+
+/// \brief 获得所有自己加入的群聊
+Response<std::vector<ChatGroup> > list_chat_groups(int uid){
+    
+}
+
+/// \brief 创建群聊
+/// \return Response<ChatGroup> 创建后的群聊信息，主要是包含id
 Response<ChatGroup> create_chat_group(int uid, std::string nickname){
 
 }
 
 /// \brief 获得某个群组的所有用户信息
-Response<std::vector<Friend>> get_group_mumber(int uid, int group_id){
+Response<std::vector<Friend> > get_group_mumber(int uid, int group_id){
 
 }
 
@@ -112,7 +339,7 @@ bool leave_group(int uid, int group_id){
 /// \brief 获得上次离线以后所有关于自己的聊天记录
 /// 
 /// 包括人对人和群组的
-Response<std::vector<Message>> get_unread_messages(int uid){
+Response<std::vector<Message> > get_unread_messages(int uid){
     
 }
 
