@@ -157,7 +157,7 @@ Response<UserInfo> get_info(int uid)
 /// \param uid
 /// \param UserInfo
 /// \return
-Response<std::string> update_info(int uid, UserInfo ui)
+bool update_info(int uid, UserInfo ui)
 {
     pqxx::connection C(DBLOGINFO);
     if (C.is_open()) {
@@ -165,10 +165,9 @@ Response<std::string> update_info(int uid, UserInfo ui)
         std::string isMale = ui.isMale ? "true" : "false";
         std::string sql = "update userinfo set username = '" + ui.username + "', password = '" + ui.password + "', lastlogintime = '" + ui.lastLoginTime + "', birthday = '" + ui.birthday + "', signature = '" + ui.signature + "', ismale = " + isMale + ", nickname = '" + ui.nickname + "' where id = '" + std::to_string(uid) + "';";
         pqxx::result R = W.exec(sql);
-        // return resp;
+        return 1;
     } else {
-        Response<std::string> resp(0, CONNECTION_ERROR);
-        return resp;
+        return 0;
     }
 }
 
@@ -230,7 +229,7 @@ Response<Friend> get_friend(int uid, int friend_id)
             tmp.createdTime = R[0][2].c_str();
             tmp.lastLoginTime = R[0][3].c_str();
             tmp.birthday = R[0][4].c_str();
-            tmp.isMale = (R[0][5].c_str() == "true") ? 1 : 0;
+            tmp.isMale = (strcmp(R[0][5].c_str(), "true")) == 0 ? 1 : 0;
             tmp.ip = R[0][6].c_str();
             tmp.nickname = R[0][7].c_str();
             Response<Friend> resp(1, SUCCESS_INFO, tmp);
@@ -397,6 +396,11 @@ Response<ChatGroup> create_chat_group(int uid, std::string nickname)
         W.commit();
 
         join_chatGroup(uid, GroupId);
+        ChatGroup tmp;
+        tmp.id = GroupId;
+        tmp.name = nickname;
+        Response<ChatGroup> resp(1, SUCCESS_INFO, tmp);
+        return resp;
     } else {
         Response<ChatGroup> resp(0, CONNECTION_ERROR);
         return resp;
@@ -501,6 +505,7 @@ Response<std::vector<Message>> get_unread_messages(int uid)
         return resp;
     } else {
         Response<std::vector<Message>> resp(0, CONNECTION_ERROR);
+        return resp;
     }
 }
 
